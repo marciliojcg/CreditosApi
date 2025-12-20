@@ -5,21 +5,32 @@ using System.Text.Json;
 
 namespace CreditosApi.Infrastructure.Messaging;
 
-public class KafkaProducer : IKafkaProducer
+public class KafkaProducer : IKafkaProducer, IDisposable
 {
-    private readonly IProducer<Null, string> _producer;
+    private IProducer<Null, string> _producer;
     private readonly ILogger<KafkaProducer> _logger;
 
     public KafkaProducer(ILogger<KafkaProducer> logger)
     {
         _logger = logger;
+        _producer = CreateProducer();
+    }
 
+    // Construtor protegido para testes
+    protected KafkaProducer(ILogger<KafkaProducer> logger, IProducer<Null, string> producer)
+    {
+        _logger = logger;
+        _producer = producer;
+    }
+
+    private IProducer<Null, string> CreateProducer()
+    {
         var config = new ProducerConfig
         {
             BootstrapServers = "localhost:9092"
         };
 
-        _producer = new ProducerBuilder<Null, string>(config).Build();
+        return new ProducerBuilder<Null, string>(config).Build();
     }
 
     public async Task ProduceAsync(string topic, string message)
@@ -42,5 +53,10 @@ public class KafkaProducer : IKafkaProducer
     {
         var jsonMessage = JsonSerializer.Serialize(message);
         await ProduceAsync(topic, jsonMessage);
+    }
+
+    public void Dispose()
+    {
+        _producer?.Dispose();
     }
 }
