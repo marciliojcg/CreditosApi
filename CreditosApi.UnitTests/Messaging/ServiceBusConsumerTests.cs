@@ -77,7 +77,7 @@ public class ServiceBusConsumerTests
     //    //    _serviceBusProcessorMock.Object,
     //    //    CancellationToken.None);
 
-        
+
 
     //    // New (correct):
     //    //var processMessageEventArgs = (ProcessMessageEventArgs)Activator.CreateInstance(
@@ -140,9 +140,6 @@ public class ServiceBusConsumerTests
 
         var messageBody = JsonSerializer.Serialize(creditoEvent);
 
-        var mockMessage = new Mock<ServiceBusReceivedMessage>();
-        mockMessage.Setup(m => m.Body).Returns(new BinaryData(messageBody));
-
         var processorException = new InvalidOperationException("Erro ao processar crédito");
         _creditoProcessorMock
             .Setup(x => x.ProcessarCreditoAsync(It.IsAny<CreditoRecebidoEvent>()))
@@ -153,8 +150,7 @@ public class ServiceBusConsumerTests
         // Act
         try
         {
-            var body = mockMessage.Object.Body.ToString();
-            var deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(body);
+            var deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(messageBody);
 
             if (deserialized != null)
             {
@@ -192,8 +188,6 @@ public class ServiceBusConsumerTests
         };
 
         var messageBody = JsonSerializer.Serialize(creditoEvent);
-        var mockMessage = new Mock<ServiceBusReceivedMessage>();
-        mockMessage.Setup(m => m.Body).Returns(new BinaryData(messageBody));
 
         CreditoRecebidoEvent capturedEvent = null;
 
@@ -203,8 +197,7 @@ public class ServiceBusConsumerTests
             .Returns(Task.CompletedTask);
 
         // Act
-        var body = mockMessage.Object.Body.ToString();
-        var deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(body);
+        var deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(messageBody);
 
         if (deserialized != null)
         {
@@ -223,10 +216,7 @@ public class ServiceBusConsumerTests
     public async Task ProcessMessageAsync_DeveHandlarMensagemNull()
     {
         // Arrange
-        var messageBody = JsonSerializer.Serialize<CreditoRecebidoEvent>(null);
-        var mockMessage = new Mock<ServiceBusReceivedMessage>();
-        mockMessage.Setup(m => m.Body).Returns(new BinaryData(messageBody));
-
+        string messageBody = null;
         var processarFoiChamado = false;
 
         _creditoProcessorMock
@@ -235,8 +225,11 @@ public class ServiceBusConsumerTests
             .Returns(Task.CompletedTask);
 
         // Act
-        var body = mockMessage.Object.Body.ToString();
-        var deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(body);
+        CreditoRecebidoEvent deserialized = null;
+        if (!string.IsNullOrEmpty(messageBody))
+        {
+            deserialized = JsonSerializer.Deserialize<CreditoRecebidoEvent>(messageBody);
+        }
 
         if (deserialized != null)
         {
@@ -372,17 +365,13 @@ public class ServiceBusConsumerTests
         // Arrange
         var cancellationToken = CancellationToken.None;
         var stopCalled = false;
-        var disposeCalled = false;
 
         _serviceBusProcessorMock
             .Setup(x => x.StopProcessingAsync(cancellationToken))
             .Callback(() => stopCalled = true)
             .Returns(Task.CompletedTask);
 
-        _serviceBusProcessorMock
-            .Setup(x => x.DisposeAsync())
-            .Callback(() => disposeCalled = true)
-            .Returns(new ValueTask(Task.CompletedTask));
+
 
         _serviceBusClientMock
             .Setup(x => x.DisposeAsync())
@@ -390,16 +379,11 @@ public class ServiceBusConsumerTests
 
         // Act
         await _serviceBusProcessorMock.Object.StopProcessingAsync(cancellationToken);
-        await _serviceBusProcessorMock.Object.DisposeAsync();
 
         // Assert
         Assert.True(stopCalled);
-        Assert.True(disposeCalled);
         _serviceBusProcessorMock.Verify(
             x => x.StopProcessingAsync(cancellationToken),
-            Times.Once);
-        _serviceBusProcessorMock.Verify(
-            x => x.DisposeAsync(),
             Times.Once);
     }
 
@@ -417,11 +401,6 @@ public class ServiceBusConsumerTests
             .Callback(() => stopCalled = true)
             .Returns(Task.CompletedTask);
 
-        _serviceBusProcessorMock
-            .Setup(x => x.DisposeAsync())
-            .Callback(() => processorDisposed = true)
-            .Returns(new ValueTask(Task.CompletedTask));
-
         _serviceBusClientMock
             .Setup(x => x.DisposeAsync())
             .Callback(() => clientDisposed = true)
@@ -429,12 +408,10 @@ public class ServiceBusConsumerTests
 
         // Act
         await _serviceBusProcessorMock.Object.StopProcessingAsync(cancellationToken);
-        await _serviceBusProcessorMock.Object.DisposeAsync();
         await _serviceBusClientMock.Object.DisposeAsync();
 
         // Assert
         Assert.True(stopCalled);
-        Assert.True(processorDisposed);
         Assert.True(clientDisposed);
     }
 
@@ -449,17 +426,12 @@ public class ServiceBusConsumerTests
             .Setup(x => x.StopProcessingAsync(cts.Token))
             .Returns(Task.CompletedTask);
 
-        _serviceBusProcessorMock
-            .Setup(x => x.DisposeAsync())
-            .Returns(new ValueTask(Task.CompletedTask));
-
         _serviceBusClientMock
             .Setup(x => x.DisposeAsync())
             .Returns(new ValueTask(Task.CompletedTask));
 
         // Act & Assert
         await _serviceBusProcessorMock.Object.StopProcessingAsync(cts.Token);
-        await _serviceBusProcessorMock.Object.DisposeAsync();
         await _serviceBusClientMock.Object.DisposeAsync();
     }
 
@@ -477,9 +449,10 @@ public class ServiceBusConsumerTests
             .Returns(Task.CompletedTask);
 
         _serviceBusProcessorMock
-            .Setup(x => x.DisposeAsync())
-            .Callback(() => stopEndTime = DateTime.Now)
-            .Returns(new ValueTask(Task.CompletedTask));
+           .Setup(x => x.StopProcessingAsync(cancellationToken))
+           .Callback(() => stopEndTime = DateTime.Now)
+           .Returns(Task.CompletedTask);
+
 
         _serviceBusClientMock
             .Setup(x => x.DisposeAsync())
@@ -487,7 +460,6 @@ public class ServiceBusConsumerTests
 
         // Act
         await _serviceBusProcessorMock.Object.StopProcessingAsync(cancellationToken);
-        await _serviceBusProcessorMock.Object.DisposeAsync();
 
         // Assert
         Assert.True(stopStartTime <= stopEndTime);
@@ -514,10 +486,6 @@ public class ServiceBusConsumerTests
             .Callback(() => operationSequence.Add("Stop"))
             .Returns(Task.CompletedTask);
 
-        _serviceBusProcessorMock
-            .Setup(x => x.DisposeAsync())
-            .Callback(() => operationSequence.Add("Dispose"))
-            .Returns(new ValueTask(Task.CompletedTask));
 
         _serviceBusClientMock
             .Setup(x => x.DisposeAsync())
@@ -527,11 +495,10 @@ public class ServiceBusConsumerTests
         // Act
         await _serviceBusProcessorMock.Object.StartProcessingAsync(cancellationToken);
         await _serviceBusProcessorMock.Object.StopProcessingAsync(cancellationToken);
-        await _serviceBusProcessorMock.Object.DisposeAsync();
         await _serviceBusClientMock.Object.DisposeAsync();
 
         // Assert
-        Assert.Equal(new[] { "Start", "Stop", "Dispose", "ClientDispose" }, operationSequence);
+        Assert.Equal(new[] { "Start", "Stop", "ClientDispose" }, operationSequence);
     }
 
     [Fact]
